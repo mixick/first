@@ -6,6 +6,7 @@ import type { Lesson } from '@/types/lesson';
 export type ResultState =
   | { status: 'empty' }
   | { status: 'loading' }
+  | { status: 'answer'; answer: string }
   | { status: 'success'; lesson: Lesson }
   | { status: 'error'; message: string };
 
@@ -52,6 +53,13 @@ export function ResultPanel({ result, runId, onTopicSelect }: ResultPanelProps) 
               <TopicChips onSelect={onTopicSelect} />
             </div>
           </div>
+        </section>
+      );
+    case 'answer':
+      return (
+        <section className="animate-fade-in-up rounded-3xl border border-neutral-800 bg-neutral-900 p-6 shadow-sm sm:p-8">
+          <h2 className="mb-4 text-xl font-bold text-neutral-100">Розв’язання задачі з фото</h2>
+          <div className="whitespace-pre-wrap break-words text-base leading-relaxed text-neutral-300">{result.answer}</div>
         </section>
       );
     case 'success':

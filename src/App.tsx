@@ -4,6 +4,8 @@ import { ResultPanel } from '@/components/ResultPanel';
 import type { ResultState } from '@/components/ResultPanel';
 import { SearchForm } from '@/components/SearchForm';
 import { SettingsModal } from '@/components/SettingsModal';
+import { loadApiKey, loadModelId } from '@/lib/aiSettingsStorage';
+import { solveImageTask } from '@/lib/openrouter';
 import { findLesson } from '@/lib/tutor';
 
 const THINKING_DELAY_MS = 700;
@@ -13,36 +15,68 @@ const NOT_FOUND_MESSAGE =
 
 export default function App() {
   const [query, setQuery] = useState('');
-  const [pendingQuery, setPendingQuery] = useState<string | null>(null);
+  const [pendingSubmission, setPendingSubmission] = useState<{ query: string; image: File | null } | null>(null);
   const [result, setResult] = useState<ResultState>({ status: 'empty' });
   const [runId, setRunId] = useState(0);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   useEffect(() => {
-    if (pendingQuery === null) return;
+    if (pendingSubmission === null) return;
+    let cancelled = false;
 
     const timer = window.setTimeout(() => {
-      const lesson = findLesson(pendingQuery);
-      setResult(lesson ? { status: 'success', lesson } : { status: 'error', message: NOT_FOUND_MESSAGE });
-      setRunId((id) => id + 1);
-      setPendingQuery(null);
+      const run = async () => {
+        if (pendingSubmission.image) {
+          const apiKey = loadApiKey();
+          if (!apiKey) {
+            setResult({
+              status: 'error',
+              message: 'Щоб розв’язати задачу з фото, додай OpenRouter API ключ у Налаштуваннях AI.',
+            });
+          } else {
+            const response = await solveImageTask(
+              apiKey,
+              loadModelId(),
+              pendingSubmission.query,
+              pendingSubmission.image,
+            );
+            if (cancelled) return;
+            setResult(
+              response.status === 'ok'
+                ? { status: 'answer', answer: response.answer }
+                : { status: 'error', message: response.message },
+            );
+          }
+        } else {
+          const lesson = findLesson(pendingSubmission.query);
+          setResult(lesson ? { status: 'success', lesson } : { status: 'error', message: NOT_FOUND_MESSAGE });
+        }
+        if (cancelled) return;
+        setRunId((id) => id + 1);
+        setPendingSubmission(null);
+      };
+
+      void run();
     }, THINKING_DELAY_MS);
 
-    return () => window.clearTimeout(timer);
-  }, [pendingQuery]);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [pendingSubmission]);
 
-  const submit = (value: string) => {
+  const submit = (value: string, image: File | null) => {
     const trimmed = value.trim();
     setQuery(value);
 
-    if (!trimmed) {
-      setPendingQuery(null);
+    if (!trimmed && !image) {
+      setPendingSubmission(null);
       setResult({ status: 'error', message: EMPTY_INPUT_MESSAGE });
       return;
     }
 
     setResult({ status: 'loading' });
-    setPendingQuery(trimmed);
+    setPendingSubmission({ query: trimmed, image });
   };
 
   const isLoading = result.status === 'loading';
@@ -67,11 +101,11 @@ export default function App() {
               value={query}
               isLoading={isLoading}
               onChange={setQuery}
-              onSubmit={() => submit(query)}
+              onSubmit={(image) => submit(query, image)}
             />
           </div>
 
-          <ResultPanel result={result} runId={runId} onTopicSelect={submit} />
+          <ResultPanel result={result} runId={runId} onTopicSelect={(topic) => submit(topic, null)} />
         </div>
       </main>
 
